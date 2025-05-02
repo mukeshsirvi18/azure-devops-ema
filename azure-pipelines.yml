@@ -1,19 +1,20 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
-- main
+  - main
 
 pool:
-  vmImage: ubuntu-latest
+  name: 'Default' # Replace with your self-hosted runner pool name
+
+variables:
+  - group: EMA # Reference the variable group with AWS_ACCESS_KEY and AWS_SECRET_KEY
 
 steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
-
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+  - script: |
+      echo "Verifying AWS CLI version..."
+      aws --version
+      echo "Checking AWS credentials..."
+      aws sts get-caller-identity
+    displayName: 'Verify AWS Credentials'
+    env:
+      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
+      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
+    condition: succeeded()
