@@ -2,87 +2,22 @@ trigger:
   - main
 
 pool:
-  name: 'ubuntu' # Self-hosted agent pool
+  name: 'ubuntu' # Your self-hosted agent pool
 
 variables:
   - group: EMA # Variable group with AWS_ACCESS_KEY and AWS_SECRET_KEY
-  - name: TERRAFORM_DIR
-    value: '$(System.DefaultWorkingDirectory)' # Update to '$(System.DefaultWorkingDirectory)/terraform' if code is in a subdirectory
-  - name: AWS_REGION
-    value: 'us-east-1' # Match your S3 bucket region
-  - name: S3_BUCKET
-    value: 'mukesh-s3-backend'
-  - name: STATE_KEY
-    value: 'terraform.tfstate'
 
-stages:
-  - stage: Terraform_Init
-    displayName: 'Terraform Init'
-    jobs:
-      - job: Init
-        steps:
-          - checkout: self
-            persistCredentials: true
-            fetchDepth: 0 # Full history
-            displayName: 'Checkout Repository'
-          - script: |
-              echo "Verifying Terraform version..."
-              terraform --version
-              echo "Running terraform init with S3 backend..."
-              terraform init \
-                -backend-config="bucket=$(S3_BUCKET)" \
-                -backend-config="key=$(STATE_KEY)" \
-                -backend-config="region=$(AWS_REGION)"
-            displayName: 'Terraform Init'
-            workingDirectory: $(TERRAFORM_DIR)
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
-            condition: succeeded()
-
-  - stage: Terraform_Plan
-    displayName: 'Terraform Plan'
-    dependsOn: Terraform_Init
-    jobs:
-      - job: Plan
-        steps:
-          - script: |
-              echo "Listing files in $(TERRAFORM_DIR)..."
-              ls -R $(TERRAFORM_DIR)
-            displayName: 'List Files'
-            workingDirectory: $(TERRAFORM_DIR)
-            condition: succeeded()
-          - script: |
-              echo "Validating Terraform configuration..."
-              terraform validate
-            displayName: 'Terraform Validate'
-            workingDirectory: $(TERRAFORM_DIR)
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
-            condition: succeeded()
-          - script: |
-              echo "Running terraform plan..."
-              terraform plan -out=tfplan
-            displayName: 'Terraform Plan'
-            workingDirectory: $(TERRAFORM_DIR)
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
-            condition: succeeded()
-
-  - stage: Terraform_Apply
-    displayName: 'Terraform Apply'
-    dependsOn: Terraform_Plan
-    jobs:
-      - job: Apply
-        steps:
-          - script: |
-              echo "Running terraform apply..."
-              terraform apply -auto-approve tfplan
-            displayName: 'Terraform Apply'
-            workingDirectory: $(TERRAFORM_DIR)
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
-            condition: succeeded()
+steps:
+  - script: |
+      echo "Listing files in current directory..."
+      ls -R
+      echo "Running terraform init with S3 backend..."
+      terraform init 
+      echo "Running terraform plan..."
+      terraform plan -out=tfplan
+      echo "Running terraform apply..."
+      terraform apply -auto-approve tfplan
+    displayName: 'Terraform Init, Plan, Apply'
+    env:
+      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
+      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
