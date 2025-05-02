@@ -2,7 +2,7 @@ trigger:
   - main
 
 pool:
-  name: 'Default' # Use the Default pool where your self-hosted agent resides
+  name: 'ubuntu' # Use the Default pool where your self-hosted agent resides
 
 variables:
   - group: EMA # Reference the variable group with AWS_ACCESS_KEY and AWS_SECRET_KEY
