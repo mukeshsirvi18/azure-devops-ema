@@ -2,12 +2,18 @@ trigger:
   - main
 
 pool:
-  name: 'ubuntu' # Use the Default pool where your self-hosted agent resides
+  name: 'ubuntu' # Self-hosted agent pool
 
 variables:
-  - group: EMA # Reference the variable group with AWS_ACCESS_KEY and AWS_SECRET_KEY
+  - group: EMA # Variable group with AWS_ACCESS_KEY and AWS_SECRET_KEY
   - name: TERRAFORM_DIR
-    value: '$(System.DefaultWorkingDirectory)' # Adjust if Terraform code is in a subdirectory (e.g., terraform/)
+    value: '$(System.DefaultWorkingDirectory)' # Update to '$(System.DefaultWorkingDirectory)/terraform' if code is in a subdirectory
+  - name: AWS_REGION
+    value: 'us-east-1' # Match your S3 bucket region
+  - name: S3_BUCKET
+    value: 'mukesh-s3-backend'
+  - name: STATE_KEY
+    value: 'terraform.tfstate'
 
 stages:
   - stage: Terraform_Init
@@ -15,17 +21,18 @@ stages:
     jobs:
       - job: Init
         steps:
+          - checkout: self
+            persistCredentials: true
+            fetchDepth: 0 # Full history
+            displayName: 'Checkout Repository'
           - script: |
-              echo "Verifying Terraform installation..."
-              if ! command -v terraform &> /dev/null; then
-                echo "Terraform not found. Installing..."
-                curl -fsSL https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip -o terraform.zip
-                unzip terraform.zip
-                sudo mv terraform /usr/local/bin/
-              fi
+              echo "Verifying Terraform version..."
               terraform --version
-              echo "Running terraform init..."
-              terraform init
+              echo "Running terraform init with S3 backend..."
+              terraform init \
+                -backend-config="bucket=$(S3_BUCKET)" \
+                -backend-config="key=$(STATE_KEY)" \
+                -backend-config="region=$(AWS_REGION)"
             displayName: 'Terraform Init'
             workingDirectory: $(TERRAFORM_DIR)
             env:
@@ -40,6 +47,21 @@ stages:
       - job: Plan
         steps:
           - script: |
+              echo "Listing files in $(TERRAFORM_DIR)..."
+              ls -R $(TERRAFORM_DIR)
+            displayName: 'List Files'
+            workingDirectory: $(TERRAFORM_DIR)
+            condition: succeeded()
+          - script: |
+              echo "Validating Terraform configuration..."
+              terraform validate
+            displayName: 'Terraform Validate'
+            workingDirectory: $(TERRAFORM_DIR)
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
+            condition: succeeded()
+          - script: |
               echo "Running terraform plan..."
               terraform plan -out=tfplan
             displayName: 'Terraform Plan'
@@ -48,9 +70,6 @@ stages:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
             condition: succeeded()
-          - publish: $(TERRAFORM_DIR)/tfplan
-            artifact: terraform-plan
-            displayName: 'Publish Terraform Plan Artifact'
 
   - stage: Terraform_Apply
     displayName: 'Terraform Apply'
@@ -58,9 +77,6 @@ stages:
     jobs:
       - job: Apply
         steps:
-          - download: current
-            artifact: terraform-plan
-            displayName: 'Download Terraform Plan Artifact'
           - script: |
               echo "Running terraform apply..."
               terraform apply -auto-approve tfplan
@@ -69,8 +85,4 @@ stages:
             env:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
-            condition: succeeded()
-          - publish: $(TERRAFORM_DIR)/terraform.tfstate
-            artifact: terraform-state
-            displayName: 'Publish Terraform State Artifact'
             condition: succeeded()
