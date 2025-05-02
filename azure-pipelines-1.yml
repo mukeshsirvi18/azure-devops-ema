@@ -1,0 +1,19 @@
+trigger:
+  - none # Manual trigger to avoid accidental destruction
+
+pool:
+  name: 'ubuntu'
+
+variables:
+  - group: EMA
+
+steps:
+  - script: |
+      echo "Running terraform init with S3 backend..."
+      terraform init 
+      echo "Running terraform destroy..."
+      terraform destroy -auto-approve
+    displayName: 'Terraform Init, Destroy'
+    env:
+      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
+      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
