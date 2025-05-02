@@ -2,7 +2,7 @@ trigger:
   - main
 
 pool:
-  name: 'Default' # Replace with your self-hosted runner pool name
+  name: 'ubuntu' # Replace with your self-hosted runner pool name
 
 variables:
   - group: EMA # Reference the variable group with AWS_ACCESS_KEY and AWS_SECRET_KEY
