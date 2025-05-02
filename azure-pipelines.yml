@@ -2,19 +2,75 @@ trigger:
   - main
 
 pool:
-  name: 'ubuntu' # Replace with your self-hosted runner pool name
+  name: 'Default' # Use the Default pool where your self-hosted agent resides
 
 variables:
   - group: EMA # Reference the variable group with AWS_ACCESS_KEY and AWS_SECRET_KEY
+  - name: TERRAFORM_DIR
+    value: '$(System.DefaultWorkingDirectory)' # Adjust if Terraform code is in a subdirectory (e.g., terraform/)
 
-steps:
-  - script: |
-      echo "Verifying AWS CLI version..."
-      aws --version
-      echo "Checking AWS credentials..."
-      aws sts get-caller-identity
-    displayName: 'Verify AWS Credentials'
-    env:
-      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
-      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
-    condition: succeeded()
+stages:
+  - stage: Terraform_Init
+    displayName: 'Terraform Init'
+    jobs:
+      - job: Init
+        steps:
+          - script: |
+              echo "Verifying Terraform installation..."
+              if ! command -v terraform &> /dev/null; then
+                echo "Terraform not found. Installing..."
+                curl -fsSL https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip -o terraform.zip
+                unzip terraform.zip
+                sudo mv terraform /usr/local/bin/
+              fi
+              terraform --version
+              echo "Running terraform init..."
+              terraform init
+            displayName: 'Terraform Init'
+            workingDirectory: $(TERRAFORM_DIR)
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
+            condition: succeeded()
+
+  - stage: Terraform_Plan
+    displayName: 'Terraform Plan'
+    dependsOn: Terraform_Init
+    jobs:
+      - job: Plan
+        steps:
+          - script: |
+              echo "Running terraform plan..."
+              terraform plan -out=tfplan
+            displayName: 'Terraform Plan'
+            workingDirectory: $(TERRAFORM_DIR)
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
+            condition: succeeded()
+          - publish: $(TERRAFORM_DIR)/tfplan
+            artifact: terraform-plan
+            displayName: 'Publish Terraform Plan Artifact'
+
+  - stage: Terraform_Apply
+    displayName: 'Terraform Apply'
+    dependsOn: Terraform_Plan
+    jobs:
+      - job: Apply
+        steps:
+          - download: current
+            artifact: terraform-plan
+            displayName: 'Download Terraform Plan Artifact'
+          - script: |
+              echo "Running terraform apply..."
+              terraform apply -auto-approve tfplan
+            displayName: 'Terraform Apply'
+            workingDirectory: $(TERRAFORM_DIR)
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_KEY)
+            condition: succeeded()
+          - publish: $(TERRAFORM_DIR)/terraform.tfstate
+            artifact: terraform-state
+            displayName: 'Publish Terraform State Artifact'
+            condition: succeeded()
